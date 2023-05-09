@@ -1,34 +1,4 @@
-/*
-${workspaceFolder}/**
-/home/caca/Documents/llvm-project/clang/include/**
-/home/caca/Documents/llvm-project/llvm/include/**
-/usr/include/llvm-10
-/home/caca/Documents/llvm-project/build/tools/clang/include/** 
-*/
-
-#include "clang/AST/ASTVector.h"
-#include "clang/AST/ComputeDependence.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/DeclAccessPair.h"
-#include "clang/AST/DependenceFlags.h"
-#include "clang/AST/OperationKinds.h"
-#include "clang/AST/TemplateBase.h"
-
-#include "clang/Basic/CharInfo.h"
-#include "clang/Basic/LangOptions.h"
-#include "clang/Basic/SyncScope.h"
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/iterator.h"
-#include "llvm/ADT/iterator_range.h"
-#include "llvm/Support/AtomicOrdering.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/TrailingObjects.h"
-#include <optional>
-
-#include "clang/AST/APValue.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/Type.h"
@@ -39,11 +9,8 @@ ${workspaceFolder}/**
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include <utility>
 #include <iostream>
-#include <string>
-#include <cstring>
-#include <stdio.h>
+#include <optional>
 
 using namespace clang;
 using namespace ento;
@@ -76,8 +43,10 @@ void AssignmentInConditionChecker::checkAssignment(const Stmt *Statement, Checke
     const Expr* expr=dyn_cast<Expr>(Statement);
 
     if(dyn_cast_or_null<ImplicitCastExpr>(expr)){
-        ReportBug(expr,"Assignment is used as branch condition",Ctx);
-        return;
+        if(! (implicitExpr->getBeginLoc()==implicitExpr->getEndLoc())){
+            ReportBug(expr,"Assignment is used as branch condition",Ctx);
+            return;
+        }
     }
 
     if(const BinaryOperator *binOp = dyn_cast<BinaryOperator>(expr)) {
@@ -85,13 +54,13 @@ void AssignmentInConditionChecker::checkAssignment(const Stmt *Statement, Checke
             expr = binOp->getLHS();
         
             while(const BinaryOperator *binOperator = dyn_cast_or_null<BinaryOperator>(expr)) {
-          /*      if(!binOperator->isCommaOp()){
+                if(!binOperator->isCommaOp()){
                     if(!(binOperator->isAssignmentOp() || binOperator->isCompoundAssignmentOp())){
                         ReportBug(expr,"Statement produces no effect",Ctx);
                         return;
                     }
                 }
-        */
+        
                 Expr* leftExpr = binOperator->getLHS();
                 if(BinaryOperator *leftOp = dyn_cast<BinaryOperator>(leftExpr)) {
                     if(!leftOp->isCommaOp()){
