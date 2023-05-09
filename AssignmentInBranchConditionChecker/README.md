@@ -25,10 +25,10 @@ For more information: [Clang - Getting Started](https://clang.llvm.org/get_start
 
 ### C
 ```bash
-./vs/2023_clang_checkers/llvm-project/build/bin/clang --analyze --analyzer-no-default-checks -Xanalyzer -analyzer-checker=alpha.unix.ProbaChecker test.c
+./2023_clang_checkers/llvm-project/build/bin/clang --analyze --analyzer-no-default-checks -Xanalyzer -analyzer-checker=alpha.unix.AssignmentInConditionChecker test.c
 ```
 
 ### C++
 ```bash
-./vs/2023_clang_checkers/llvm-project/build/bin/clang++ --analyze --analyzer-no-default-checks -Xanalyzer -analyzer-checker=alpha.unix.ProbaChecker test.cpp
+./2023_clang_checkers/llvm-project/build/bin/clang++ --analyze --analyzer-no-default-checks -Xanalyzer -analyzer-checker=alpha.unix.AssignmentInConditionChecker test.cpp
 ```
