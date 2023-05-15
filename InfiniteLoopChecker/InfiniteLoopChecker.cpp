@@ -48,40 +48,9 @@ private:
   static inline bool isEmptyCFGBlock(const CFGBlock *CB);
 
   static inline bool isInLoop(const ParentMap *PM, const Stmt *S);
+  static inline bool isReturnStmt(const ParentMap *PM, const Stmt *S);
+
 };
-}
-
-bool InfiniteLoopChecker::isInLoop(const ParentMap *PM, const Stmt *S){
-
-
-    // first parent
-    if(const Stmt *p = PM->getParent(S)){
-        if(const Stmt *parent = PM->getParent(p)){
-
-            // checks if statement S is inside a loop
-            if(isa<WhileStmt>(parent) || isa<ForStmt>(parent)){
-                return true;
-            }
-
-            if(isa<IfStmt>(parent)){
-
-                // second parent
-                if(const Stmt *p1 = PM->getParent(parent)){
-                    if(const Stmt *parent1 = PM->getParent(p1)){
-
-                        // checks if statement S is in IF statement inside a LOOP
-                        if(isa<WhileStmt>(parent1) || isa<ForStmt>(parent1)){
-                            return true;
-                        }
-                    }
-                }
-            }
-        
-        }
-        
-    }
-
-    return false;
 }
 
 void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
@@ -130,9 +99,12 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     if (FD->isTemplateInstantiation())
       return;
 
+
+  bool foundLoopPred = false;
   // Find CFGBlocks that were not covered by any node
   for (CFG::const_iterator I = C->begin(), E = C->end(); I != E; ++I) {
     const CFGBlock *CB = *I;
+
     // Check if the block is unreachable
     if (reachable.count(CB->getBlockID()))
       continue;
@@ -189,49 +161,42 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
 
 // ********************************************************************************************
 
-        if(isa<BreakStmt>(S)){
-            std::cout << "**********\nunreachable break\n**********" << std::endl;
+      // checks if unreachable statement is preceded by a loop, so the loop is possibly infinite
+      for (CFG::reverse_iterator it = C->rbegin(), e = C->rend(); it != e; ++it) {
+        const CFGBlock *pred = *it;
+
+        if(pred->getBlockID() == CB->getBlockID()){
+          std::cout << "----------------- ovde ------------------" << std::endl;
+          break;
         }
 
-        // checks for unreachable VOID return statement inside a loop
-        if(isa<ReturnStmt>(S)){
-            if(isInLoop(PM, S)){
-                std::cout << "**********\nunreachable return\n**********" << std::endl;
-            }
-            
+        if(const Stmt *target = pred->getLoopTarget()){
+          foundLoopPred = true;
+          std::cout << "_______________loop: " << target->getStmtClassName()  << std::endl;
         }
+      }
 
-        // checks for unreachable NON VOID return statement inside a loop
-        if(const Stmt *p = PM->getParent(S)){
-            if(const Stmt *parent = PM->getParent(p)){
 
-                if(isa<ReturnStmt>(parent)){
-                    if(isInLoop(PM, parent)){
-                        std::cout << "**********\nunreachable return (non void)\n**********" << std::endl;
-                    }
 
-                }
 
-                if(isa<BinaryOperator>(parent) || isa<ImplicitCastExpr>(parent)){
-                    std::cout << "usao u binarni operator" << std::endl;
-                    if(const Stmt *p1 = PM->getParent(parent)){
-                        if(const Stmt *p2 = PM->getParent(p1)){
-                            std::cout << p2->getStmtClassName() << std::endl;
-                            if(isa<ReturnStmt>(p2)){
-                                // std::cout << "ovde je return" << std::endl;
-                                if(isInLoop(PM, p2)){
-                                    std::cout << "**********\nunreachable return (non void)\n**********" << std::endl;
-                                    
-                                }
-                            }
-                        }
-                    }
-                }
-
-            }
-
+      // checks if loop has unreachable break or return statement
+      if(isa<BreakStmt>(S)){
+          std::cout << "**********\nunreachable break\n**********" << std::endl;
+      }
+      else if(isReturnStmt(PM, S)){
+        if(isInLoop(PM, S)){
+          std::cout << "**********\nunreachable return in loop\n**********" << std::endl;
         }
+        else{
+          std::cout << "**********\nunreachable return (not in loop)\n**********" << std::endl;
+          // continue;
+        }
+      }
+      else if(!foundLoopPred){
+        continue;
+      }
 
+      
 // ********************************************************************************************
 
 
@@ -243,6 +208,8 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
             if (const Stmt *Parent = PM->getParent(S))
               if (isa<DoStmt>(Parent))
                 continue;
+
+
       SR = S->getSourceRange();
       DL = PathDiagnosticLocation::createBegin(S, B.getSourceManager(), LC);
       SL = DL.asLocation();
@@ -257,8 +224,18 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     if (SM.isInSystemHeader(SL) || SM.isInExternCSystemHeader(SL))
       continue;
 
-    B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,
-                      "This statement is never executed", DL, SR);
+    
+    if(foundLoopPred){
+      B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,
+                      "This statement is never executed, has a predecessor that is a possible infinite loop", DL, SR);
+
+    }
+    else{
+      B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,
+                      "This statement is never executed, possible infinite loop", DL, SR);
+
+    }
+
   }
 }
 
@@ -286,6 +263,7 @@ void InfiniteLoopChecker::FindUnreachableEntryPoints(const CFGBlock *CB,
 
 // Find the Stmt* in a CFGBlock for reporting a warning
 const Stmt *InfiniteLoopChecker::getUnreachableStmt(const CFGBlock *CB) {
+
   for (CFGBlock::const_iterator I = CB->begin(), E = CB->end(); I != E; ++I) {
     if (std::optional<CFGStmt> S = I->getAs<CFGStmt>()) {
       if (!isa<DeclStmt>(S->getStmt()))
@@ -341,6 +319,37 @@ bool InfiniteLoopChecker::isEmptyCFGBlock(const CFGBlock *CB) {
       && !CB->getTerminatorStmt(); // No terminator
 }
 
+
+// Recursively checks if statement is inside a loop
+bool InfiniteLoopChecker::isInLoop(const ParentMap *PM, const Stmt *S){
+  
+  if(isa<WhileStmt>(S) || isa<ForStmt>(S) || isa<DoStmt>(S)){
+    return true;
+  }
+
+  if(const Stmt *parent = PM->getParent(S)){
+    return isInLoop(PM, parent);
+  }
+
+  return false;
+
+}
+
+// Recursively checks if statement is a part of return statement
+bool InfiniteLoopChecker::isReturnStmt(const ParentMap *PM, const Stmt *S){
+  if(isa<ReturnStmt>(S)){
+    return true;
+  }
+
+  if(const Stmt *parent = PM->getParent(S)){
+    return isReturnStmt(PM, parent);
+  }
+
+  return false;
+}
+
+
+
 void ento::registerInfiniteLoopChecker(CheckerManager &mgr) {
   mgr.registerChecker<InfiniteLoopChecker>();
 }
@@ -348,3 +357,4 @@ void ento::registerInfiniteLoopChecker(CheckerManager &mgr) {
 bool ento::shouldRegisterInfiniteLoopChecker(const CheckerManager &mgr) {
   return true;
 }
+
