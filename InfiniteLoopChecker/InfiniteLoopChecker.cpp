@@ -15,6 +15,7 @@
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/AST/Expr.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
@@ -49,6 +50,8 @@ private:
 
   static inline bool isInLoop(const ParentMap *PM, const Stmt *S);
   static inline bool isReturnStmt(const ParentMap *PM, const Stmt *S);
+  static inline bool hasBreakStmt(const Stmt *S);
+
 
 };
 }
@@ -58,8 +61,6 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
                                               ExprEngine &Eng) const {
   CFGBlocksSet reachable, visited;
 
-  if (Eng.hasWorkRemaining())
-    return;
 
   const Decl *D = nullptr;
   CFG *C = nullptr;
@@ -72,6 +73,7 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     LC = P.getLocationContext();
     if (!LC->inTopFrame())
       continue;
+
 
     if (!D)
       D = LC->getAnalysisDeclContext()->getDecl();
@@ -88,6 +90,7 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     }
   }
 
+
   // Bail out if we didn't get the CFG or the ParentMap.
   if (!D || !C || !PM)
     return;
@@ -98,12 +101,68 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
   if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
     if (FD->isTemplateInstantiation())
       return;
-
+  
 
   bool foundLoopPred = false;
   // Find CFGBlocks that were not covered by any node
   for (CFG::const_iterator I = C->begin(), E = C->end(); I != E; ++I) {
+
+
     const CFGBlock *CB = *I;
+
+    // *******************************************************************************************
+
+      if(const Stmt *stmt = CB->getLoopTarget()){
+
+        if(const WhileStmt *whileLoop = dyn_cast<WhileStmt>(stmt)){
+          const Expr *ex = whileLoop->getCond();
+
+          bool res = false;
+
+          if(ex->EvaluateAsBooleanCondition(res, Eng.getContext()) && res){
+
+            std::cout << "---------- petlja je beskonacna -----------" << std::endl;
+
+            const Stmt *s = whileLoop->getBody();
+
+            if(const CompoundStmt *b = dyn_cast<CompoundStmt>(s)){
+
+              bool hasBreak = false;
+              for(CompoundStmt::const_body_iterator bi = b->body_begin(), be = b->body_end(); bi != be; ++bi){
+                const Stmt *current = (*bi);
+
+                if(hasBreakStmt(current)){
+                  hasBreak = true;
+                  break;
+                }
+
+              }
+
+
+              if(hasBreak){
+                  std::cout << "---------- ima break -> ipak nije beskonacna -----------" << std::endl;
+              }
+              else {
+                  std::cout << "---------- nema break -> jeste beskonacna -----------" << std::endl;
+
+                  //ne treba da nastavlja sa analizom, znamo da je beskonacna -> ovde treba reportovati gresku
+                  return;
+              }
+
+
+
+            }
+          } 
+
+
+        }
+
+      }
+
+
+      if (Eng.hasWorkRemaining())
+        continue;
+    // ******************************************************************************************
 
     // Check if the block is unreachable
     if (reachable.count(CB->getBlockID()))
@@ -124,7 +183,7 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     // Check for false positives
     if (isInvalidPath(CB, *PM))
       continue;
-
+ 
     // It is good practice to always have a "default" label in a "switch", even
     // if we should never get there. It can be used to detect errors, for
     // instance. Unreachable code directly under a "default" label is therefore
@@ -166,13 +225,11 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
         const CFGBlock *pred = *it;
 
         if(pred->getBlockID() == CB->getBlockID()){
-          std::cout << "----------------- ovde ------------------" << std::endl;
           break;
         }
 
         if(const Stmt *target = pred->getLoopTarget()){
           foundLoopPred = true;
-          std::cout << "_______________loop: " << target->getStmtClassName()  << std::endl;
         }
       }
 
@@ -226,6 +283,7 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
 
     
     if(foundLoopPred){
+      foundLoopPred = false;
       B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,
                       "This statement is never executed, has a predecessor that is a possible infinite loop", DL, SR);
 
@@ -343,6 +401,21 @@ bool InfiniteLoopChecker::isReturnStmt(const ParentMap *PM, const Stmt *S){
 
   if(const Stmt *parent = PM->getParent(S)){
     return isReturnStmt(PM, parent);
+  }
+
+  return false;
+}
+
+bool InfiniteLoopChecker::hasBreakStmt(const Stmt *S){
+    
+  if(isa<BreakStmt>(S) || isa<ReturnStmt>(S)){
+    return true;
+  }
+
+  for(Stmt::const_child_iterator i = S->child_begin(), e = S->child_end(); i != e; ++i){
+    if(hasBreakStmt(*i)){
+      return true;
+    }
   }
 
   return false;
