@@ -42,6 +42,8 @@ void AssignmentInConditionChecker::ReportBug(const Expr *Ex, const std::string &
 void AssignmentInConditionChecker::checkAssignment(const Stmt *Statement, CheckerContext &Ctx) const {
     const Expr* expr=dyn_cast<Expr>(Statement);
 
+    //class of expresion that contains assignment will be ImplicitCastExpr
+    //type of right operand comma operator has to be bool
     if(dyn_cast_or_null<ImplicitCastExpr>(expr)){
         if(! (implicitExpr->getBeginLoc()==implicitExpr->getEndLoc())){
             ReportBug(expr,"Assignment is used as branch condition",Ctx);
@@ -49,10 +51,13 @@ void AssignmentInConditionChecker::checkAssignment(const Stmt *Statement, Checke
         }
     }
 
+
+    //we expect left operand of comma operator to produce some side effect
+    //if that is not a case we report a warning
     if(const BinaryOperator *binOp = dyn_cast<BinaryOperator>(expr)) {
         if(binOp->isCommaOp()){
             expr = binOp->getLHS();
-        
+
             while(const BinaryOperator *binOperator = dyn_cast_or_null<BinaryOperator>(expr)) {
                 if(!binOperator->isCommaOp()){
                     if(!(binOperator->isAssignmentOp() || binOperator->isCompoundAssignmentOp())){
