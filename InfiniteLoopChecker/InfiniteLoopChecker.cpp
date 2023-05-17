@@ -115,6 +115,8 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
       if(const Stmt *stmt = CB->getLoopTarget()){
 
 
+
+
         if(const WhileStmt *whileLoop = dyn_cast<WhileStmt>(stmt) ){
 
           const Expr *condExpr = whileLoop->getCond();
@@ -140,7 +142,7 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
               }
               if(!hasBreak){
 
-                B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This loop is infinite.", 
+                B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This loop is infinite, possibly missing break or return statement. ", 
                   PathDiagnosticLocation::createBegin(whileLoop, B.getSourceManager(), LC), whileLoop->getSourceRange());
 
                 // the loop is infinte, ending further analysis      
@@ -174,7 +176,7 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
               }
               if(!hasBreak){
                 
-                B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This loop is infinite.",
+                B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This loop is infinite, possibly missing break or return statement.",
                  PathDiagnosticLocation::createBegin(forLoop, B.getSourceManager(), LC), forLoop->getSourceRange());
 
                 // the loop is infinte, ending further analysis  
@@ -182,8 +184,6 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
               }
             }
           } 
-
-
         }
 
 
@@ -259,16 +259,19 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
           break;
         }
 
-        if(const Stmt *target = presededBlock->getLoopTarget()){
+        if(presededBlock->getLoopTarget()){
           foundLoopPred = true;
         }
       }
-
-      if(!(isa<BreakStmt>(S) || isReturnStmt(PM, S)) && !foundLoopPred){
+    
+      if( !(isa<BreakStmt>(S) || isReturnStmt(PM, S) || foundLoopPred) ){
         continue;
       }
+
+
+      
    
-    // ********************************************************************************************
+      // ********************************************************************************************
 
 
       // In macros, 'do {...} while (0)' is often used. Don't warn about the
@@ -301,15 +304,11 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     //REPORTINGS  
     if(isa<BreakStmt>(S)){
       
-      if(isInLoop(PM, S)){
+      //if(isInLoop(PM, S)){
 
         B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This break statement in loop is never executed. There is possible infinite loop.", DL, SR);
 
-      }else if(foundLoopPred){
-
-        B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This break statement is never executed. There is possible infinite loop preceding this statement.", DL, SR);
-
-      }
+      
     }else if(isReturnStmt(PM, S)){
       
       if(isInLoop(PM, S)){
@@ -321,7 +320,11 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
         B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This return statement is never executed. There is possible infinite loop preceding this statement.", DL, SR);
 
       }
-    }
+    }else if(foundLoopPred){
+
+        B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This statement is never executed. There is possible infinite loop preceding this statement.", DL, SR);
+
+      }
 
     //*********************************************************************************************************************************
   }
