@@ -114,48 +114,93 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
 
       if(const Stmt *stmt = CB->getLoopTarget()){
 
-        if(const WhileStmt *whileLoop = dyn_cast<WhileStmt>(stmt)){
-          const Expr *ex = whileLoop->getCond();
 
-          bool res = false;
+        if(const WhileStmt *whileLoop = dyn_cast<WhileStmt>(stmt) ){
 
-          if(ex->EvaluateAsBooleanCondition(res, Eng.getContext()) && res){
+          const Expr *condExpr = whileLoop->getCond();
 
-            std::cout << "---------- petlja je beskonacna -----------" << std::endl;
+          bool condResult = false;
 
-            const Stmt *s = whileLoop->getBody();
+          if(condExpr->EvaluateAsBooleanCondition(condResult, Eng.getContext()) && condResult){
 
-            if(const CompoundStmt *b = dyn_cast<CompoundStmt>(s)){
+            //std::cout << "---------- petlja je beskonacna -----------" << std::endl;
+
+            const Stmt *loopBody = whileLoop->getBody();
+
+            if(const CompoundStmt *compoundStmt = dyn_cast<CompoundStmt>(loopBody)){
 
               bool hasBreak = false;
-              for(CompoundStmt::const_body_iterator bi = b->body_begin(), be = b->body_end(); bi != be; ++bi){
-                const Stmt *current = (*bi);
+              for(CompoundStmt::const_body_iterator bodyIter = compoundStmt->body_begin(), bodyEnd = compoundStmt->body_end(); bodyIter != bodyEnd; ++bodyIter){
+                const Stmt *currentStmt = (*bodyIter);
 
-                if(hasBreakStmt(current)){
+                if(hasBreakStmt(currentStmt)){
                   hasBreak = true;
                   break;
                 }
 
               }
+              if(!hasBreak){
+                  //std::cout << "---------- nema break -> jeste beskonacna -----------" << std::endl;
 
-
-              if(hasBreak){
-                  std::cout << "---------- ima break -> ipak nije beskonacna -----------" << std::endl;
-              }
-              else {
-                  std::cout << "---------- nema break -> jeste beskonacna -----------" << std::endl;
+                //SR = S->getSourceRange();
+                //DL = PathDiagnosticLocation::createBegin(S, B.getSourceManager(), LC);
+      
 
                   //ne treba da nastavlja sa analizom, znamo da je beskonacna -> ovde treba reportovati gresku
+                  B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This loop is infinite.",
+                   PathDiagnosticLocation::createBegin(whileLoop, B.getSourceManager(), LC), 
+                   whileLoop->getSourceRange());
+                  
                   return;
               }
+            }
+          } 
 
 
+        }else if(const ForStmt *forLoop = dyn_cast<ForStmt>(stmt) ){
 
+          const Expr *condExpr = forLoop->getCond();
+
+          bool condResult = false;
+
+          if(condExpr->EvaluateAsBooleanCondition(condResult, Eng.getContext()) && condResult){
+
+            //std::cout << "---------- petlja je beskonacna -----------" << std::endl;
+
+            const Stmt *loopBody = forLoop->getBody();
+
+            if(const CompoundStmt *compoundStmt = dyn_cast<CompoundStmt>(loopBody)){
+
+              bool hasBreak = false;
+              for(CompoundStmt::const_body_iterator bodyIter = compoundStmt->body_begin(), bodyEnd = compoundStmt->body_end(); bodyIter != bodyEnd; ++bodyIter){
+                const Stmt *currentStmt = (*bodyIter);
+
+                if(hasBreakStmt(currentStmt)){
+                  hasBreak = true;
+                  break;
+                }
+
+              }
+              if(!hasBreak){
+                  //std::cout << "---------- nema break -> jeste beskonacna -----------" << std::endl;
+
+                //SR = S->getSourceRange();
+                //DL = PathDiagnosticLocation::createBegin(S, B.getSourceManager(), LC);
+      
+
+                  //ne treba da nastavlja sa analizom, znamo da je beskonacna -> ovde treba reportovati gresku
+                  B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This loop is infinite.",
+                   PathDiagnosticLocation::createBegin(forLoop, B.getSourceManager(), LC), 
+                   forLoop->getSourceRange());
+                  
+                  return;
+              }
             }
           } 
 
 
         }
+
 
       }
 
@@ -216,28 +261,27 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     SourceRange SR;
     PathDiagnosticLocation DL;
     SourceLocation SL;
-    if (const Stmt *S = getUnreachableStmt(CB)) {
+    const Stmt *S = getUnreachableStmt(CB);
+    if (S) {
 
-// ********************************************************************************************
+    // ********************************************************************************************
 
       // checks if unreachable statement is preceded by a loop, so the loop is possibly infinite
-      for (CFG::reverse_iterator it = C->rbegin(), e = C->rend(); it != e; ++it) {
-        const CFGBlock *pred = *it;
+      for (CFG::reverse_iterator iter = C->rbegin(), endIter = C->rend(); iter != endIter; ++iter) {
+        const CFGBlock *presededBlock = *iter;
 
-        if(pred->getBlockID() == CB->getBlockID()){
+        if(presededBlock->getBlockID() == CB->getBlockID()){
           break;
         }
 
-        if(const Stmt *target = pred->getLoopTarget()){
+        if(const Stmt *target = presededBlock->getLoopTarget()){
           foundLoopPred = true;
         }
       }
 
 
-
-
       // checks if loop has unreachable break or return statement
-      if(isa<BreakStmt>(S)){
+     /* if(isa<BreakStmt>(S)){
           std::cout << "**********\nunreachable break\n**********" << std::endl;
       }
       else if(isReturnStmt(PM, S)){
@@ -249,12 +293,15 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
           // continue;
         }
       }
-      else if(!foundLoopPred){
+      else */
+     /* if(isa<BreakStmt>(S) || isReturnStmt(PM, S)){
+
+      } else*/
+      if(!(isa<BreakStmt>(S) || isReturnStmt(PM, S)) && !foundLoopPred){
         continue;
       }
-
-      
-// ********************************************************************************************
+   
+    // ********************************************************************************************
 
 
       // In macros, 'do {...} while (0)' is often used. Don't warn about the
@@ -281,19 +328,29 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     if (SM.isInSystemHeader(SL) || SM.isInExternCSystemHeader(SL))
       continue;
 
-    
-    if(foundLoopPred){
-      foundLoopPred = false;
-      B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,
-                      "This statement is never executed, has a predecessor that is a possible infinite loop", DL, SR);
-
-    }
-    else{
-      B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,
-                      "This statement is never executed, possible infinite loop", DL, SR);
-
-    }
-
+    if(isa<BreakStmt>(S)){
+      //std::cout << "**********\nunreachable break\n**********" << std::endl;
+      //B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This break statement is never executed. There is possible infinite loop.", DL, SR);
+      if(isInLoop(PM, S)){
+          //std::cout << "**********\nunreachable break in loop\n**********" << std::endl;
+          B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This break statement in loop is never executed. There is possible infinite loop.", DL, SR);
+        }
+        else if(foundLoopPred){
+          //std::cout << "**********\nunreachable break (not in loop)\n**********" << std::endl;
+          B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This break statement is never executed. There is possible infinite loop preceding this statement.", DL, SR);
+          // continue;
+        }
+    }else if(isReturnStmt(PM, S)){
+        if(isInLoop(PM, S)){
+          //std::cout << "**********\nunreachable return in loop\n**********" << std::endl;
+          B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This return statement in loop is never executed. There is possible infinite loop.", DL, SR);
+        }
+        else{
+          //std::cout << "**********\nunreachable return (not in loop)\n**********" << std::endl;
+          B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This return statement is never executed. There is possible infinite loop preceding this statement.", DL, SR);
+          // continue;
+        }
+      }
   }
 }
 
@@ -430,4 +487,3 @@ void ento::registerInfiniteLoopChecker(CheckerManager &mgr) {
 bool ento::shouldRegisterInfiniteLoopChecker(const CheckerManager &mgr) {
   return true;
 }
-
