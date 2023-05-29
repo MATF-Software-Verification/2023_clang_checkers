@@ -44,7 +44,7 @@ void AssignmentInConditionChecker::checkAssignment(const Stmt *Statement, Checke
 
     //class of expresion that contains assignment will be ImplicitCastExpr
     //type of right operand comma operator has to be bool
-    if(dyn_cast_or_null<ImplicitCastExpr>(expr)){
+    if(const ImplicitCastExpr* implicitExpr = dyn_cast_or_null<ImplicitCastExpr>(expr)){
         if(! (implicitExpr->getBeginLoc()==implicitExpr->getEndLoc())){
             ReportBug(expr,"Assignment is used as branch condition",Ctx);
             return;
