@@ -43,8 +43,14 @@ For more information: [Clang - Getting Started](https://clang.llvm.org/get_start
 
 Test examples are available in **Tests** directory for each checker, with script runTests.sh for running all tests.
 
+
+```bash
+./runTests
+```
+
+
 ## Authors
 
 - Svetlana Bićanin 1082/2022
-- Lucija Milicic 1076/2022
-- Aleksandra Pesic 1077/2022
+- Lucija Miličić 1076/2022
+- Aleksandra Pešić 1077/2022
