@@ -305,7 +305,7 @@ void InfiniteLoopChecker::checkEndAnalysis(ExplodedGraph &G,
     if(isa<BreakStmt>(S)){
       
       B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This break statement in loop is never executed. There is possible infinite loop.", DL, SR);
-
+      
     }else if(isReturnStmt(PM, S) && isInLoop(PM, S)){
       
       B.EmitBasicReport(D, this, "Unreachable code", categories::UnusedCode,"This return statement in loop is never executed. There is possible infinite loop.", DL, SR);
@@ -434,6 +434,10 @@ bool InfiniteLoopChecker::hasBreakStmt(const Stmt *S){
   if(isa<BreakStmt>(S) || isa<ReturnStmt>(S)){
     return true;
   }
+  else if(isa<WhileStmt>(S) || isa<ForStmt>(S)){
+    return false;
+  }
+
 
   for(Stmt::const_child_iterator i = S->child_begin(), e = S->child_end(); i != e; ++i){
     if(hasBreakStmt(*i)){
